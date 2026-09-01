@@ -69,9 +69,11 @@ Free tiers change and commonly sleep inactive services, impose connection/runtim
 
 ### Render setup for this repository
 
-The included `apps/signaling/render.yaml` is a Render Blueprint. After the repository is pushed to GitHub, GitLab, or Bitbucket:
+The root-level `render.yaml` is a Render Blueprint. It defines this service with
+`apps/signaling` as its service root, so the Dockerfile and build context resolve
+correctly in the monorepo. After the repository is pushed to GitHub, GitLab, or Bitbucket:
 
-1. In Render, choose **New → Blueprint**, select the repository, and set the Blueprint Path to `apps/signaling/render.yaml`.
+1. In Render, choose **New → Blueprint** and select the repository. Leave the Blueprint Path as the default, `render.yaml`.
 2. Select the Free plan and deploy. Render provides `PORT` automatically; do not override it.
 3. Enter `ALLOWED_ORIGINS` when prompted. Until a frontend exists, use a local development origin such as `http://localhost:5173`; later replace/add the exact deployed frontend origin.
 4. Wait for `https://<service-name>.onrender.com/health` to return `{"status":"ok"}`.

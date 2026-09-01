@@ -1,0 +1,19 @@
+# Render Blueprint for the complete deployable service in this repository.
+# Render discovers this root-level file automatically when creating a Blueprint.
+services:
+  - type: web
+    name: p2p-signaling
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: apps/signaling
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set this to the exact public origin(s) of a future browser client.
+      # A value is required on first Blueprint creation but is never committed.
+      - key: ALLOWED_ORIGINS
+        sync: false
