@@ -5,8 +5,8 @@ services:
     runtime: docker
     plan: free
     region: singapore
-    dockerfilePath: ./apps/signaling/Dockerfile
-    dockerContext: ./apps/signaling
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
