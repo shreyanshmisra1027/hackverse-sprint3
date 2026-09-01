@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '../routes/router'
-import { archiveMessage, getMockUser, isSignedIn, signOutMock } from '../lib/mock-auth'
+import { archiveMessage, getMockUser, isSignedIn, listUsers, signOutMock } from '../lib/mock-auth'
 import { type ConnectionState, P2PChat } from '../lib/p2p-chat'
 
 type Person = {
@@ -33,30 +33,9 @@ type Person = {
 }
 type Message = { id: number; text: string; outgoing: boolean; time: string }
 
-const people: Person[] = [
-  { name: 'Rahul Kumar', username: '@rahulk', initials: 'RK', tone: 'from-cyan-500/30 to-blue-600/30', online: true, preview: 'The hackathon idea is getting real.', time: '2m' },
-  { name: 'Sarah Chen', username: '@sarahc', initials: 'SC', tone: 'from-fuchsia-500/30 to-purple-600/30', online: true, preview: 'See you at the library?', time: '18m' },
-  { name: 'Arjun Patel', username: '@arjunp', initials: 'AP', tone: 'from-amber-400/30 to-orange-600/30', online: true, preview: 'Sent a connection request', time: '1h' },
-  { name: 'Priya Sharma', username: '@priyash', initials: 'PS', tone: 'from-emerald-400/30 to-teal-600/30', online: false, preview: 'That workshop was great.', time: '3h' },
-  { name: 'Alex Johnson', username: '@alexj', initials: 'AJ', tone: 'from-blue-400/30 to-indigo-600/30', online: false, preview: 'Let\'s compare notes tomorrow.', time: 'Yesterday' },
-]
-
-const discoveryPeople: Person[] = [
-  { name: 'Rahul Kumar', username: '@rahul_kumar', initials: 'RK', tone: 'from-cyan-500/30 to-blue-600/30', online: true, preview: 'Building the next big thing.', time: 'now' },
-  { name: 'Ananya Rao', username: '@ananyarao', initials: 'AR', tone: 'from-fuchsia-500/30 to-purple-600/30', online: true, preview: 'Design & innovation enthusiast.', time: 'now' },
-  { name: 'Vikram Singh', username: '@vikrams', initials: 'VS', tone: 'from-amber-400/30 to-orange-600/30', online: false, preview: 'Computer Science, 3rd year.', time: '12m' },
-]
-
-const seed: Record<string, Message[]> = {
-  '@rahulk': [
-    { id: 1, text: 'Hey! Did you see the new hackathon brief?', outgoing: false, time: '10:41 AM' },
-    { id: 2, text: 'Yes, the campus sustainability track looks incredible.', outgoing: true, time: '10:43 AM' },
-    { id: 3, text: 'The hackathon idea is getting real. Want to build a team?', outgoing: false, time: '10:45 AM' },
-  ],
-  '@sarahc': [{ id: 1, text: 'See you at the library?', outgoing: false, time: '9:24 AM' }],
-  '@arjunp': [{ id: 1, text: 'Sent a connection request', outgoing: false, time: 'Yesterday' }],
-  '@priyash': [{ id: 1, text: 'That workshop was great.', outgoing: false, time: 'Monday' }],
-  '@alexj': [{ id: 1, text: 'Let\'s compare notes tomorrow.', outgoing: false, time: 'Sunday' }],
+function personFromUsername(username: string, index: number): Person {
+  const tones = ['from-cyan-500/30 to-blue-600/30', 'from-fuchsia-500/30 to-purple-600/30', 'from-amber-400/30 to-orange-600/30', 'from-emerald-400/30 to-teal-600/30']
+  return { name: username, username: `@${username}`, initials: username.slice(0, 2).toUpperCase(), tone: tones[index % tones.length], online: false, preview: '', time: '' }
 }
 
 function Avatar({ person, small = false }: { person: Person; small?: boolean }) {
@@ -80,8 +59,9 @@ function Avatar({ person, small = false }: { person: Person; small?: boolean }) 
 
 export function MessagingDashboard() {
   const navigate = useNavigate()
-  const [selected, setSelected] = useState<Person | null>(people[0])
-  const [messages, setMessages] = useState(seed)
+  const [people, setPeople] = useState<Person[]>([])
+  const [selected, setSelected] = useState<Person | null>(null)
+  const [messages, setMessages] = useState<Record<string, Message[]>>({})
   const [draft, setDraft] = useState('')
   const [search, setSearch] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -99,6 +79,17 @@ export function MessagingDashboard() {
     if (!isSignedIn()) navigate({ to: '/login' })
     return () => chat.current?.close()
   }, [navigate])
+
+  useEffect(() => {
+    if (!isSignedIn()) return
+    let active = true
+    void listUsers().then((users) => {
+      if (active) setPeople(users.map((account, index) => personFromUsername(account.username, index)))
+    }).catch(() => {
+      if (active) setPeople([])
+    })
+    return () => { active = false }
+  }, [])
 
   const filtered = useMemo(
     () => people.filter((p) => `${p.name} ${p.username}`.toLowerCase().includes(search.toLowerCase())),
@@ -212,7 +203,7 @@ export function MessagingDashboard() {
 
         <div className="flex-1 overflow-y-auto px-3">
           <p className="px-2 pb-3 pt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-400">
-            Active now <span className="text-muted-foreground">3</span>
+            Students <span className="text-muted-foreground">{people.length}</span>
           </p>
           {filtered.filter((p) => p.online).map((p) => (
             <ConversationItem key={p.username} person={p} active={selected?.username === p.username} onClick={() => select(p)} />
@@ -390,6 +381,8 @@ export function MessagingDashboard() {
         onlineOnly={onlineOnly}
         setOnlineOnly={setOnlineOnly}
         state={connectionState}
+        roomCode={roomCode}
+        people={people}
         joinCode={joinRoomCode}
         setJoinCode={setJoinRoomCode}
         onClose={() => setDiscoverOpen(false)}
@@ -407,6 +400,8 @@ function DiscoverModal({
   onlineOnly,
   setOnlineOnly,
   state,
+  roomCode,
+  people,
   joinCode,
   setJoinCode,
   onClose,
@@ -419,13 +414,15 @@ function DiscoverModal({
   onlineOnly: boolean
   setOnlineOnly: (value: boolean) => void
   state: ConnectionState
+  roomCode: string
+  people: Person[]
   joinCode: string
   setJoinCode: (value: string) => void
   onClose: () => void
   onStart: (person: Person) => void
   onJoin: (person: Person) => void
 }) {
-  const results = discoveryPeople.filter(
+  const results = people.filter(
     (person) =>
       `${person.name} ${person.username}`.toLowerCase().includes(query.toLowerCase()) &&
       (!onlineOnly || person.online),
@@ -458,6 +455,12 @@ function DiscoverModal({
                 </div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">{state === 'waiting' ? 'Room created' : 'Connecting...'}</p>
                 <h2 className="mt-3 text-2xl font-semibold">{state === 'waiting' ? 'Waiting for your peer' : 'Making the introduction'}</h2>
+                {state === 'waiting' && (
+                  <div className="mt-5 rounded-xl border border-cyan-300/30 bg-cyan-300/[0.08] px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200">Share this room code</p>
+                    <code className="mt-1 block select-all font-mono text-lg font-semibold text-white">{roomCode}</code>
+                  </div>
+                )}
                 <div className="mt-8 flex w-full max-w-sm items-center justify-between text-xs text-muted-foreground">
                   <span className="text-cyan-300">Finding peer</span>
                   <span className="text-cyan-300">→</span>
@@ -544,7 +547,7 @@ function DiscoverModal({
                     )}
                   </div>
                   <div className="border-t border-white/[0.08] pt-4">
-                    <p className="text-xs text-muted-foreground">Already have a room code?</p>
+                    <p className="text-xs text-muted-foreground">Search for the room creator, then paste their room code.</p>
                     <div className="mt-2 flex gap-2">
                       <input
                         value={joinCode}

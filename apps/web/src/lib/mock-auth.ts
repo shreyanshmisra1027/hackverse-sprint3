@@ -3,6 +3,8 @@ export type AuthUser = {
   username: string
 }
 
+export type DirectoryUser = { username: string }
+
 const USER_KEY = 'inevitable-user'
 const SESSION_KEY = 'inevitable-session'
 // Production requests must stay on Vercel so `/api` reaches the serverless
@@ -50,6 +52,11 @@ export async function createMockUser(prefix: string, username: string, password:
   window.localStorage.setItem(SESSION_KEY, result.token)
   saveMockUser({ vitEmail: email, username: result.user.username })
   return getMockUser()
+}
+
+export async function listUsers(): Promise<DirectoryUser[]> {
+  const result = await api('/api/users')
+  return Array.isArray(result.users) ? result.users : []
 }
 
 export async function archiveMessage(roomId: string, recipientUsername: string, text: string) {
