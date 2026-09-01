@@ -1,5 +1,5 @@
 export const CLIENT_MESSAGE_TYPES = [
-  "CREATE_ROOM", "JOIN_ROOM", "SDP_OFFER", "SDP_ANSWER", "ICE_CANDIDATE",
+  "CREATE_ROOM", "JOIN_ROOM", "SDP_OFFER", "SDP_ANSWER", "ICE_CANDIDATE", "CHAT_MESSAGE",
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];
@@ -18,11 +18,12 @@ export interface IceCandidate {
   usernameFragment?: string | null;
 }
 export interface SignalMessage {
-  type: "SDP_OFFER" | "SDP_ANSWER" | "ICE_CANDIDATE";
+  type: "SDP_OFFER" | "SDP_ANSWER" | "ICE_CANDIDATE" | "CHAT_MESSAGE";
   roomId: string;
   targetPeerId: string;
   sdp?: SessionDescription;
   candidate?: IceCandidate;
+  text?: string;
 }
 export type ClientMessage = CreateRoomMessage | JoinRoomMessage | SignalMessage;
 

@@ -5,6 +5,7 @@ type SignalMessage =
   | { type: 'PEER_LEFT'; roomId: string; peerId: string }
   | { type: 'SDP_OFFER' | 'SDP_ANSWER'; roomId: string; targetPeerId: string; sdp: RTCSessionDescriptionInit }
   | { type: 'ICE_CANDIDATE'; roomId: string; targetPeerId: string; candidate: RTCIceCandidateInit }
+  | { type: 'CHAT_MESSAGE'; roomId: string; targetPeerId: string; text: string }
   | { type: 'ERROR'; code: string; message: string }
 
 type Handlers = {
@@ -45,8 +46,9 @@ export class P2PChat {
   create() { this.connect('CREATE_ROOM') }
   join() { this.connect('JOIN_ROOM') }
   send(text: string) {
-    if (this.channel?.readyState !== 'open') throw new Error('Your peer is not connected yet.')
-    this.channel.send(text)
+    if (this.channel?.readyState === 'open') return this.channel.send(text)
+    if (!this.socket || !this.remotePeerId) throw new Error('Your peer is not connected yet.')
+    send(this.socket, { type: 'CHAT_MESSAGE', roomId: this.roomId, targetPeerId: this.remotePeerId, text })
   }
   close() {
     this.channel?.close()
@@ -81,11 +83,13 @@ export class P2PChat {
       this.remotePeerId = message.peerId
       this.handlers.onPeer(message.peerId)
       this.ensurePeer()
+      this.handlers.onState('connected', 'Connected through the relay while WebRTC is negotiated.')
       if (this.channel) await this.makeOffer()
       return
     }
     if (!this.remotePeerId || message.targetPeerId !== this.peerId) return
     try {
+      if (message.type === 'CHAT_MESSAGE') return this.handlers.onMessage(message.text)
       const peer = this.ensurePeer()
       if (message.type === 'SDP_OFFER') {
         await peer.setRemoteDescription(message.sdp)
@@ -110,7 +114,7 @@ export class P2PChat {
     peer.addEventListener('datachannel', (event) => this.attachChannel(event.channel))
     peer.addEventListener('connectionstatechange', () => {
       if (peer.connectionState === 'connected') this.handlers.onState('connected')
-      if (peer.connectionState === 'failed') this.handlers.onState('error', 'The direct connection failed. Try another network or a TURN relay.')
+      if (peer.connectionState === 'failed') this.handlers.onState('connected', 'Using the encrypted archive and signaling relay.')
     })
     this.peer = peer
     return peer

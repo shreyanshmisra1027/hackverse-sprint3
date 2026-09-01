@@ -4,6 +4,7 @@ const ROOM_ID = /^[A-Za-z0-9_-]{3,64}$/;
 const PEER_ID = /^[A-Za-z0-9_-]{3,64}$/;
 const MAX_SDP_LENGTH = 65_536;
 const MAX_CANDIDATE_LENGTH = 4_096;
+const MAX_CHAT_LENGTH = 10_000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -40,6 +41,10 @@ export function parseClientMessage(raw: string): ClientMessage | { error: string
   if (value.type === "ICE_CANDIDATE") {
     if (!isId(value.roomId, ROOM_ID) || !isId(value.targetPeerId, PEER_ID) || !isCandidate(value.candidate)) return { error: "Invalid ICE candidate message." };
     return { type: value.type, roomId: value.roomId, targetPeerId: value.targetPeerId, candidate: value.candidate };
+  }
+  if (value.type === "CHAT_MESSAGE") {
+    if (!isId(value.roomId, ROOM_ID) || !isId(value.targetPeerId, PEER_ID) || typeof value.text !== "string" || !value.text.trim() || value.text.length > MAX_CHAT_LENGTH) return { error: "Invalid chat message." };
+    return { type: value.type, roomId: value.roomId, targetPeerId: value.targetPeerId, text: value.text };
   }
   return { error: "Unsupported message type." };
 }
