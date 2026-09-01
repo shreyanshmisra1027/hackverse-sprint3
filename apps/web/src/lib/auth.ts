@@ -15,44 +15,54 @@ const API_URL = import.meta.env.DEV
   : ''
 
 async function api(path: string, body?: unknown) {
-  const response = await fetch(`${API_URL}${path}`, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json', ...(localStorage.getItem(SESSION_KEY) ? { authorization: `Bearer ${localStorage.getItem(SESSION_KEY)}` } : {}) }, body: body ? JSON.stringify(body) : undefined })
+  const token = sessionToken()
+  const response = await fetch(`${API_URL}${path}`, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(data.error || 'Authentication request failed.')
   return data
 }
 
-export function saveMockUser(user: AuthUser) {
+function sessionToken() {
+  return window.localStorage.getItem(SESSION_KEY) || window.sessionStorage.getItem(SESSION_KEY)
+}
+
+function saveUser(user: AuthUser) {
   window.localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
-export function getMockUser(): AuthUser | null {
+export function getCurrentUser(): AuthUser | null {
   if (typeof window === 'undefined') return null
   const raw = window.localStorage.getItem(USER_KEY)
   if (!raw) return null
   try { return JSON.parse(raw) as AuthUser } catch { return null }
 }
 
-export async function signInMock(email: string, password: string, _remember: boolean) {
+export async function signIn(email: string, password: string, remember: boolean) {
   const result = await api('/api/auth/login', { email, password })
-  window.localStorage.setItem(SESSION_KEY, result.token)
-  saveMockUser({ vitEmail: result.user.email, username: result.user.username })
+  const storage = remember ? window.localStorage : window.sessionStorage
+  window.localStorage.removeItem(SESSION_KEY)
+  window.sessionStorage.removeItem(SESSION_KEY)
+  storage.setItem(SESSION_KEY, result.token)
+  saveUser({ vitEmail: result.user.email, username: result.user.username })
   return true
 }
 
 export function isSignedIn() {
-  return Boolean(window.localStorage.getItem(SESSION_KEY))
+  return Boolean(sessionToken())
 }
 
-export function signOutMock() {
+export function signOut() {
   window.localStorage.removeItem(SESSION_KEY)
+  window.sessionStorage.removeItem(SESSION_KEY)
+  window.localStorage.removeItem(USER_KEY)
 }
 
-export async function createMockUser(prefix: string, username: string, password: string) {
+export async function createUser(prefix: string, username: string, password: string) {
   const email = `${prefix}@vitstudent.ac.in`
   const result = await api('/api/auth/signup', { email, username, password })
   window.localStorage.setItem(SESSION_KEY, result.token)
-  saveMockUser({ vitEmail: email, username: result.user.username })
-  return getMockUser()
+  saveUser({ vitEmail: email, username: result.user.username })
+  return getCurrentUser()
 }
 
 export async function listUsers(): Promise<DirectoryUser[]> {

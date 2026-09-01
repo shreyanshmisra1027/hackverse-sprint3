@@ -1,22 +1,31 @@
 # ineVITable
 
-Peer-to-peer communication, in the browser.
+ineVITable is a VIT student messaging app for private, two-person conversations. Create an account with a `@vitstudent.ac.in` address, find another student in the directory, share a room code, and connect through a WebRTC data channel.
 
-# What this is
+**Live product:** [hackverse-sprint3.vercel.app](https://hackverse-sprint3.vercel.app)
 
-A web app for direct P2P communication between clients — no central server relaying messages/media once a connection is established.
+## How it works
+
+1. A student creates a room and shares its code with another student.
+2. The signaling service relays only the WebRTC offer, answer, and ICE candidates needed to establish a connection.
+3. After the connection opens, chat messages travel directly over the browsers' WebRTC data channel.
+
+The app also provides account authentication, recent-presence status, and an encrypted personal message archive.
 
 ## Project structure
 
-```
-apps/web/        Vite browser client and WebRTC data-channel chat
-apps/signaling/  WebRTC negotiation WebSocket service
+```text
+apps/web/        React + Vite frontend and Vercel API routes
+apps/signaling/  WebSocket service used for WebRTC negotiation
+e2e-messaging/   Encryption and end-to-end messaging utilities
 render.yaml      Render Blueprint for the signaling service
 ```
 
 ## Run locally
 
-Run the signaling service in one terminal:
+Requirements: Node.js 20+ and npm.
+
+Start the signaling service in one terminal:
 
 ```bash
 cd apps/signaling
@@ -24,82 +33,46 @@ npm install
 npm run dev
 ```
 
-Run the frontend in another terminal:
+Start the web app in a second terminal:
 
 ```bash
 cd apps/web
-cp .env.example .env.local
 npm install
 npm run dev
 ```
 
-`VITE_SIGNALING_URL` must point to the browser-reachable WebSocket address of
-the signaling service (`ws://localhost:10000` by default). In production use
-its public `wss://` address and set `ALLOWED_ORIGINS` on the signaling service
-to the exact frontend origin.
+Configure the web app with the environment variables below. For local development, `VITE_SIGNALING_URL` should point to the browser-reachable signaling server, typically `ws://localhost:8080`.
 
-The dashboard creates an ephemeral room code. One browser creates the room and
-shares that code; a second browser joins it. The server relays only WebRTC
-negotiation frames. Once connected, chat messages travel through the browsers'
-WebRTC data channel and are not stored by the service.
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | Pooled Neon Postgres connection string for the Vercel API routes. |
+| `MESSAGE_ENCRYPTION_KEY` | Yes | Base64-encoded 32-byte key used to encrypt message archive rows. |
+| `VITE_SIGNALING_URL` | Yes | Public WebSocket URL for the signaling service. |
+| `VITE_TURN_URL` | Optional | TURN URL for networks where direct WebRTC cannot connect. |
+| `VITE_TURN_USERNAME` / `VITE_TURN_CREDENTIAL` | Optional | TURN credentials. |
 
-## Production deployment
+Generate an archive-encryption key with:
 
-This project has three deployed parts:
+```bash
+openssl rand -base64 32
+```
 
-- **Vercel** hosts the Vite site and its `/api` serverless functions.
-- **Neon Lakebase Postgres** stores bcrypt password hashes, hashed session
-  tokens, and AES-256-GCM encrypted message archives.
-- **Render** hosts only WebRTC signaling. Message payloads still travel over
-  the browser WebRTC data channel after negotiation; Render does not store
-  them.
+## Deploy
 
-### 1. Neon and Vercel
+- Deploy `apps/web` to **Vercel**. It serves the Vite frontend and same-origin `/api` routes.
+- Provision **Neon Postgres** and set `DATABASE_URL` plus `MESSAGE_ENCRYPTION_KEY` in Vercel.
+- Deploy the root [`render.yaml`](render.yaml) Blueprint to **Render** for signaling. Set `ALLOWED_ORIGINS` to `https://hackverse-sprint3.vercel.app` (plus any preview or custom origins you need).
+- Set Vercel's `VITE_SIGNALING_URL` to the Render service's public `wss://` URL, then redeploy the web app.
 
-Create a Neon project and use its **pooled** `DATABASE_URL` in Vercel. Add
-these environment variables to Vercel for Production, Preview, and Development:
+For production reliability, configure TURN credentials as well; STUN-only WebRTC cannot connect through every campus, mobile, or restrictive NAT/firewall network.
 
-| Variable | Value |
-| --- | --- |
-| `DATABASE_URL` | Neon pooled connection string (`...-pooler...`) |
-| `MESSAGE_ENCRYPTION_KEY` | Base64-encoded, random 32-byte key |
-| `VITE_SIGNALING_URL` | `wss://<render-service>.onrender.com` |
+## Security notes
 
-Generate the encryption key locally with `openssl rand -base64 32`; keep it
-only in Vercel's encrypted environment settings. It encrypts archive rows
-before they reach Neon. Passwords are never saved in the browser or database
-as plaintext: they are bcrypt hashes. There is intentionally no email/OTP
-verification flow.
+- Passwords are stored as bcrypt hashes; sessions are stored as hashes.
+- Message archive content is AES-256-GCM encrypted before it is written to Postgres.
+- The signaling service does not relay chat payloads after WebRTC is established.
+- Room codes are bearer-style invitations. Share them only with the person you intend to chat with.
 
-Import the repository into Vercel and set the **Root Directory** to `apps/web`.
-Vercel installs dependencies, builds the Vite client, and deploys the `api/`
-functions automatically. Do not set `VITE_API_URL` in Vercel: production
-authentication always calls same-origin `/api` routes, never Render.
+## Credits
 
-`DATABASE_URL` in a local root `.env.local` is not deployed automatically.
-Add it in **Vercel → Project → Settings → Environment Variables** for every
-environment you deploy (Production, Preview, and Development), then redeploy.
-
-### 2. Render signaling
-
-1. Push the `main` branch to GitHub.
-2. In Render, choose **New → Blueprint** and select this repository.
-3. Keep the default Blueprint Path, `render.yaml`.
-4. Enter `ALLOWED_ORIGINS` as the exact browser origin or origins allowed to
-   open a WebSocket connection (for example, `https://example.com`).
-5. Deploy, then verify `https://<service-name>.onrender.com/health` returns
-   `{"status":"ok"}`.
-
-Render supplies `PORT`; do not configure it manually. The service is an
-in-memory two-peer signaling relay, so no database, disk, or other external
-service is required.
-
-Set `ALLOWED_ORIGINS` to the exact Vercel production URL (and any custom domain),
-for example `https://inevitable.vercel.app`. After its first deploy, copy the
-Render service URL into Vercel as `VITE_SIGNALING_URL`, redeploy Vercel, then
-update Render's allowlist if the final Vercel domain differs.
-
-For reliable WebRTC connections across campus and mobile networks, add a TURN
-provider and set `VITE_TURN_URL`, `VITE_TURN_USERNAME`, and
-`VITE_TURN_CREDENTIAL` in Vercel before redeploying. STUN-only WebRTC cannot
-connect peers behind some NAT/firewall combinations.
+with <3 from the Newbies team

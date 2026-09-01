@@ -13,12 +13,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from '../routes/router'
-import {
-  createMockUser,
-  getMockUser,
-  signInMock,
-  VIT_DOMAIN,
-} from '../lib/mock-auth'
+import { createUser, signIn, VIT_DOMAIN } from '../lib/auth'
 
 const ease = [0.22, 1, 0.36, 1] as const
 
@@ -67,7 +62,7 @@ function AuthFrame({
             {children}
           </motion.div>
         </div>
-        <p className="text-center text-[11px] text-muted-foreground/60">ineVITable · A quieter kind of social network</p>
+        <p className="text-center text-[11px] text-muted-foreground/60">ineVITable · with &lt;3 from the Newbies team</p>
       </div>
     </main>
   )
@@ -110,7 +105,7 @@ export function LoginForm() {
     setMessage('')
     window.setTimeout(async () => {
       try {
-        await signInMock(`${prefix}${VIT_DOMAIN}`, password, remember)
+        await signIn(`${prefix}${VIT_DOMAIN}`, password, remember)
         setMessage('Connecting you to your network...')
         window.setTimeout(() => navigate({ to: '/dashboard' }), 900)
       } catch (error) {
@@ -225,7 +220,7 @@ export function SignupForm() {
     e.preventDefault()
     if (!prefix || !username || !strength.every(Boolean)) return setError('Complete all password requirements.')
     if (password !== confirm) return setError('Passwords do not match.')
-    try { await createMockUser(prefix, username, password); navigate({ to: '/dashboard' }) } catch (error) { setError(error instanceof Error ? error.message : 'Unable to create account.') }
+    try { await createUser(prefix, username, password); navigate({ to: '/dashboard' }) } catch (error) { setError(error instanceof Error ? error.message : 'Unable to create account.') }
   }
 
   return (

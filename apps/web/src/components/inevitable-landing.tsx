@@ -11,26 +11,17 @@ import {
   Radio,
   ShieldCheck,
   Sparkles,
-  Users,
   X,
   Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '../routes/router'
 
-const nodes = [
-  { x: '12%', y: '26%', label: 'AR', color: 'cyan' },
-  { x: '27%', y: '68%', label: 'SK', color: 'blue' },
-  { x: '49%', y: '23%', label: 'MP', color: 'purple' },
-  { x: '70%', y: '66%', label: 'NV', color: 'cyan' },
-  { x: '88%', y: '31%', label: 'RJ', color: 'blue' },
-]
-
 const features = [
-  { icon: ShieldCheck, title: 'VIT Verified', copy: 'Every identity is tied to your VIT credentials. No strangers, no noise.' },
-  { icon: Radio, title: 'Local First', copy: 'Find people around you and stay connected to the campus that matters.' },
-  { icon: LockKeyhole, title: 'Private Conversations', copy: 'Your messages are yours. Built for direct, intentional conversations.' },
-  { icon: Zap, title: 'Instant Messaging', copy: 'Fast, lightweight, and ready whenever a conversation starts.' },
+  { icon: ShieldCheck, title: 'VIT email only', copy: 'Create an account with a @vitstudent.ac.in address and choose the name people see.' },
+  { icon: Radio, title: 'Direct connections', copy: 'Start a private peer-to-peer conversation by sharing a room code with another student.' },
+  { icon: LockKeyhole, title: 'Private by design', copy: 'Messages travel over a direct WebRTC data channel once the connection is ready.' },
+  { icon: Zap, title: 'Live presence', copy: 'See who has recently been active in the student directory.' },
 ]
 
 function Reveal({ children, className = '', delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
@@ -70,7 +61,7 @@ function CursorSpotlight() {
 
 export function InevitableLanding() {
   const [menuOpen, setMenuOpen] = useState(false)
-  const phrases = ['verified students', 'people nearby', 'real conversations']
+  const phrases = ['VIT students', 'direct connections', 'real conversations']
   const [typed, setTyped] = useState(phrases[0])
 
   useEffect(() => {
@@ -155,7 +146,7 @@ export function InevitableLanding() {
             transition={{ delay: 0.16 }}
             className="mt-7 max-w-lg text-pretty text-base leading-7 text-muted-foreground sm:text-lg"
           >
-            A private, local-first messaging space for the people who make VIT feel like home.{' '}
+            A messaging space for the people who make VIT feel like home.{' '}
             <span className="typewriter-line text-cyan-200">
               {typed}
               <span aria-hidden="true" className="typewriter-cursor" />
@@ -213,14 +204,14 @@ export function InevitableLanding() {
           <div>
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Your network, your way</p>
             <h2 className="text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
-              From verified<br /><span className="text-muted-foreground">to connected.</span>
+              From sign-up<br /><span className="text-muted-foreground">to connected.</span>
             </h2>
             <p className="mt-6 max-w-sm text-sm leading-6 text-muted-foreground">
               ineVITable keeps the experience simple so your conversations can be anything but.
             </p>
           </div>
           <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
-            {['Create your VIT identity', 'Choose your student username', 'Discover people nearby', 'Connect and start talking'].map((item, i) => (
+            {['Create an account with your VIT email', 'Choose your student username', 'Find another student in the directory', 'Share a room code and start talking'].map((item, i) => (
               <div key={item} className="flex items-center gap-5 py-6">
                 <span className="font-mono text-xs text-cyan-400">0{i + 1}</span>
                 <span className="text-lg font-medium">{item}</span>
@@ -252,7 +243,7 @@ export function InevitableLanding() {
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-black text-primary-foreground">i</span>
           <span className="font-semibold">ineVITable<span className="text-cyan-400">.</span></span>
         </div>
-        <p className="text-xs text-muted-foreground">Built for VIT students, by VIT students.</p>
+        <p className="text-xs text-muted-foreground">Built for VIT students, by VIT students · with &lt;3 from the Newbies team</p>
         <div className="flex gap-5 text-xs text-muted-foreground">
           <a href="#security" className="transition-colors hover:text-foreground">Terms</a>
           <a href="#security" className="transition-colors hover:text-foreground">Privacy</a>
@@ -282,25 +273,24 @@ function NetworkVisual() {
           </linearGradient>
         </defs>
       </svg>
-      {nodes.map((node, i) => (
+      {['12%', '27%', '49%', '70%', '88%'].map((left, i) => (
         <motion.div
-          key={node.label}
+          key={left}
           className="absolute"
-          style={{ left: node.x, top: node.y }}
+          style={{ left, top: ['26%', '68%', '23%', '66%', '31%'][i] }}
           animate={{ y: [0, -9, 0] }}
           transition={{ duration: 4 + i * 0.4, repeat: Infinity, ease: 'easeInOut' }}
         >
           <div
-            className={`relative flex h-12 w-12 items-center justify-center rounded-full border text-xs font-semibold shadow-2xl ${
-              node.color === 'cyan'
+            className={`relative flex h-4 w-4 items-center justify-center rounded-full border shadow-2xl ${
+              i % 3 === 0
                 ? 'border-cyan-300/40 bg-cyan-950 text-cyan-200 shadow-cyan-500/20'
-                : node.color === 'purple'
+                : i % 3 === 1
                 ? 'border-purple-300/40 bg-purple-950 text-purple-200 shadow-purple-500/20'
                 : 'border-blue-300/40 bg-blue-950 text-blue-200 shadow-blue-500/20'
             }`}
           >
-            {node.label}
-            <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_8px_#22d3ee]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_#22d3ee]" />
           </div>
         </motion.div>
       ))}
@@ -312,9 +302,6 @@ function NetworkVisual() {
         <MessageCircle className="h-7 w-7 text-cyan-300" />
         <Sparkles className="absolute -right-2 -top-2 h-4 w-4 text-cyan-300" />
       </motion.div>
-      <div className="absolute bottom-1 right-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-        <Users className="h-3 w-3 text-cyan-400" /> 1,284 students online
-      </div>
     </div>
   )
 }

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '../routes/router'
-import { archiveMessage, getMockUser, isSignedIn, listUsers, loadArchivedMessages, signOutMock, updatePresence } from '../lib/mock-auth'
+import { archiveMessage, getCurrentUser, isSignedIn, listUsers, loadArchivedMessages, signOut, updatePresence } from '../lib/auth'
 import { type ConnectionState, P2PChat } from '../lib/p2p-chat'
 
 type Person = {
@@ -35,7 +35,7 @@ type Message = { id: number; text: string; outgoing: boolean; time: string }
 
 function personFromUsername(username: string, index: number, online = false): Person {
   const tones = ['from-cyan-500/30 to-blue-600/30', 'from-fuchsia-500/30 to-purple-600/30', 'from-amber-400/30 to-orange-600/30', 'from-emerald-400/30 to-teal-600/30']
-  return { name: username, username: `@${username}`, initials: username.slice(0, 2).toUpperCase(), tone: tones[index % tones.length], online, preview: '', time: '' }
+  return { name: username, username: `@${username}`, initials: username.slice(0, 2).toUpperCase(), tone: tones[index % tones.length], online, preview: 'No messages yet', time: '' }
 }
 
 function Avatar({ person, small = false }: { person: Person; small?: boolean }) {
@@ -73,7 +73,7 @@ export function MessagingDashboard() {
   const [joinRoomCode, setJoinRoomCode] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const chat = useRef<P2PChat | null>(null)
-  const user = getMockUser()
+  const user = getCurrentUser()
 
   useEffect(() => {
     if (!isSignedIn()) navigate({ to: '/login' })
@@ -94,7 +94,7 @@ export function MessagingDashboard() {
     refresh()
     void loadArchivedMessages().then((archived) => {
       if (!active) return
-      setMessages(archived.reduce<Record<string, Message[]>>((all, message) => {
+      setMessages([...archived].reverse().reduce<Record<string, Message[]>>((all, message) => {
         const key = message.recipientUsername
         const time = new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         all[key] = [...(all[key] || []), { id: Number.parseInt(message.id.replace(/-/g, '').slice(0, 12), 16), text: message.text, outgoing: message.outgoing, time }]
@@ -108,9 +108,17 @@ export function MessagingDashboard() {
     }
   }, [])
 
+  const peopleWithConversationData = useMemo(
+    () => people.map((person) => {
+      const latest = messages[person.username]?.at(-1)
+      return latest ? { ...person, preview: latest.text, time: latest.time } : person
+    }),
+    [messages, people],
+  )
+
   const filtered = useMemo(
-    () => people.filter((p) => `${p.name} ${p.username}`.toLowerCase().includes(search.toLowerCase())),
-    [search],
+    () => peopleWithConversationData.filter((p) => `${p.name} ${p.username}`.toLowerCase().includes(search.toLowerCase())),
+    [peopleWithConversationData, search],
   )
 
   useEffect(() => {
@@ -119,10 +127,9 @@ export function MessagingDashboard() {
 
   const send = () => {
     const text = draft.trim()
-    if (!text || !selected) return
-    if (chat.current && connectionState !== 'connected') return
+    if (!text || !selected || connectionState !== 'connected') return
     try { chat.current?.send(text) } catch { return }
-    if (roomCode) void archiveMessage(roomCode, selected.username, text).catch(() => undefined)
+    void archiveMessage(roomCode, selected.username, text).catch(() => undefined)
     setMessages((current) => ({
       ...current,
       [selected.username]: [
@@ -143,7 +150,6 @@ export function MessagingDashboard() {
     setRoomCode(code)
     setSelected(person)
     setDiscoverOpen(false)
-    setMessages((current) => ({ ...current, [person.username]: [] }))
     setConnectionState('connecting')
     chat.current = new P2PChat(code, peerId, {
       onState: (state) => setConnectionState(state),
@@ -161,6 +167,10 @@ export function MessagingDashboard() {
   }
 
   const select = (person: Person) => {
+    chat.current?.close()
+    chat.current = null
+    setRoomCode('')
+    setConnectionState('idle')
     setSelected(person)
     setSidebarOpen(false)
   }
@@ -240,7 +250,7 @@ export function MessagingDashboard() {
             </div>
             <button
               onClick={() => {
-                signOutMock()
+                signOut()
                 navigate({ to: '/login' })
               }}
               aria-label="Sign out"
@@ -279,9 +289,7 @@ export function MessagingDashboard() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h1 className="truncate text-sm font-semibold">{selected.name}</h1>
-                    <span className="hidden rounded-full border border-cyan-400/20 bg-cyan-400/[0.06] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-cyan-300 sm:inline-flex">
-                      Direct connection
-                    </span>
+                    {connectionState === 'connected' && <span className="hidden rounded-full border border-cyan-400/20 bg-cyan-400/[0.06] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-cyan-300 sm:inline-flex">Direct connection</span>}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {selected.username} ·{' '}
@@ -340,7 +348,7 @@ export function MessagingDashboard() {
                           {m.outgoing && (
                             <>
                               <span>·</span>
-                              <Check className="h-3 w-3 text-cyan-300" /> Delivered
+                              <Check className="h-3 w-3 text-cyan-300" /> Sent
                             </>
                           )}
                         </div>
@@ -378,7 +386,8 @@ export function MessagingDashboard() {
                   whileTap={{ scale: 0.9 }}
                   onClick={send}
                   aria-label="Send message"
-                  className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:shadow-[0_0_25px_rgba(34,211,238,.25)]"
+                  disabled={connectionState !== 'connected'}
+                  className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:shadow-[0_0_25px_rgba(34,211,238,.25)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send className="h-4 w-4" />
                 </motion.button>
@@ -387,7 +396,7 @@ export function MessagingDashboard() {
             </div>
           </>
         ) : (
-          <EmptyState />
+          <EmptyState onDiscover={() => setDiscoverOpen(true)} />
         )}
       </section>
 
@@ -399,7 +408,7 @@ export function MessagingDashboard() {
         setOnlineOnly={setOnlineOnly}
         state={connectionState}
         roomCode={roomCode}
-        people={people}
+        people={peopleWithConversationData}
         joinCode={joinRoomCode}
         setJoinCode={setJoinRoomCode}
         onClose={() => setDiscoverOpen(false)}
@@ -624,7 +633,7 @@ function ConversationItem({
   )
 }
 
-function EmptyState() {
+function EmptyState({ onDiscover }: { onDiscover: () => void }) {
   return (
     <div className="flex flex-1 items-center justify-center px-6">
       <div className="max-w-sm text-center">
@@ -635,9 +644,9 @@ function EmptyState() {
         </div>
         <h2 className="text-2xl font-semibold tracking-tight">Your conversations start here.</h2>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Discover students around you and start a direct connection.
+          Find students in the directory and start a direct connection.
         </p>
-        <button className="mt-6 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground hover:-translate-y-0.5">
+        <button onClick={onDiscover} className="mt-6 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground hover:-translate-y-0.5">
           <Users className="mr-2 inline h-4 w-4" /> Discover Students
         </button>
       </div>
