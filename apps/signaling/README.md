@@ -16,6 +16,8 @@ npm start
 
 The health check is `GET http://localhost:8080/health`, returning `{"status":"ok"}`. The browser WebSocket URL is `ws://localhost:8080` locally and should be `wss://your-signaling-host` in production. Set it in the frontend's deployment environment; do not point the frontend at an internal container hostname.
 
+The compiled entry point is `dist/src/index.js`; `npm start` runs that file automatically.
+
 Run the integration tests with `npm test`. They start two WebSocket clients and cover creation, joining, SDP/ICE forwarding, invalid messages, full rooms, and disconnect notification.
 
 ## Protocol
