@@ -1,0 +1,107 @@
+@import 'tailwindcss';
+
+/* ── CSS custom properties ─────────────────────────────────── */
+:root {
+  color-scheme: dark;
+  --background:       #05070c;
+  --foreground:       #f4f7fb;
+  --card:             #0b1220;
+  --card-foreground:  #f4f7fb;
+  --primary:          #dceeff;
+  --primary-foreground: #07101f;
+  --muted-foreground: #8491a8;
+  --border:           rgba(255,255,255,.1);
+  --radius:           .75rem;
+}
+
+@theme inline {
+  --color-background:        var(--background);
+  --color-foreground:        var(--foreground);
+  --color-card:              var(--card);
+  --color-card-foreground:   var(--card-foreground);
+  --color-primary:           var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted-foreground:  var(--muted-foreground);
+  --color-border:            var(--border);
+  --font-sans:               ui-sans-serif, system-ui, sans-serif;
+  --font-mono:               ui-monospace, monospace;
+}
+
+/* ── Base resets ─────────────────────────────────────────────── */
+*, *::before, *::after { border-color: var(--border); }
+
+html { scroll-behavior: smooth; background: var(--background); }
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button, a, input, textarea { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #67e8f9;
+  outline-offset: 3px;
+}
+
+/* ── Landing page decorations ───────────────────────────────── */
+.spotlight {
+  background: radial-gradient(
+    320px circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    rgba(34,211,238,.09),
+    transparent 68%
+  );
+}
+
+.ambient-grid {
+  background-image:
+    linear-gradient(rgba(95,140,190,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(95,140,190,.055) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(to bottom, black, transparent 76%);
+  animation: grid-drift 22s linear infinite;
+}
+
+.particles {
+  background-image:
+    radial-gradient(circle, rgba(103,232,249,.55) 0 1px, transparent 1.5px),
+    radial-gradient(circle, rgba(96,165,250,.4) 0 1px, transparent 1.5px);
+  background-position: 10% 20%, 80% 50%;
+  background-size: 180px 220px, 240px 280px;
+  animation: particle-drift 18s ease-in-out infinite alternate;
+  opacity: .28;
+}
+
+.typewriter-cursor {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: 4px;
+  vertical-align: -.15em;
+  background: currentColor;
+  animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes grid-drift { to { background-position: 64px 64px; } }
+@keyframes particle-drift { to { background-position: 16% 12%, 74% 58%; } }
+@keyframes blink { 50% { opacity: 0; } }
+
+@media (max-width: 767px) {
+  .ambient-grid { background-size: 48px 48px; animation: none; }
+  .particles { animation: none; opacity: .16; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .ambient-grid, .particles, .typewriter-cursor { animation: none; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

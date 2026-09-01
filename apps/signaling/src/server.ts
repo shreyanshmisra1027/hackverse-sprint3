@@ -335,27 +335,6 @@ export function createSignalingServer(
   }, 30_000);
 
   /*
-   * STARTUP
-   */
-  httpServer.listen(
-    config.port,
-    "0.0.0.0",
-    () => {
-      console.log(
-        `Signaling service listening on :${config.port}`
-      );
-
-      console.log(
-        `WebSocket endpoint: ws(s)://<host>/`
-      );
-
-      console.log(
-        `Health endpoint: /health`
-      );
-    }
-  );
-
-  /*
    * CLEAN SHUTDOWN
    */
   const close = () =>
