@@ -1,133 +1,66 @@
-import http from 'http';
-import { WebSocketServer } from 'ws';
-import { handleMessage, handleDisconnect } from './websocket';
-import { roomStore } from './rooms';
-import { IncomingMessage } from 'http';
+import { createServer, type IncomingMessage, type Server } from "node:http";
+import { WebSocketServer, type WebSocket } from "ws";
+import { RoomStore } from "./rooms.js";
+import { attachSignaling } from "./websocket.js";
 
-const PORT = parseInt(process.env.PORT || '8080', 10);
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
-  : undefined;
+export interface ServerConfig {
+  port: number;
+  allowedOrigins: string[];
+  maxConnections: number;
+  maxPayloadBytes: number;
+  maxMessagesPerWindow: number;
+  rateWindowMs: number;
+}
+export interface RunningServer { httpServer: Server; close: () => Promise<void>; config: ServerConfig }
 
-const MAX_CONNECTIONS = 100;
-const RATE_LIMIT_WINDOW_MS = 10_000;
-const MAX_MESSAGES_PER_WINDOW = 30;
-const MAX_PAYLOAD_SIZE = 64 * 1024;
-
-interface ClientMeta {
-  ip: string;
-  messages: number[];
-  rateLimited: boolean;
+export function configFromEnv(env = process.env): ServerConfig {
+  const numeric = (name: string, fallback: number) => {
+    const value = Number(env[name]); return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+  };
+  return {
+    port: numeric("PORT", 8080),
+    allowedOrigins: (env.ALLOWED_ORIGINS ?? "").split(",").map((item) => item.trim()).filter(Boolean),
+    maxConnections: numeric("MAX_CONNECTIONS", 500),
+    maxPayloadBytes: numeric("MAX_PAYLOAD_BYTES", 70_000),
+    maxMessagesPerWindow: numeric("MAX_MESSAGES_PER_WINDOW", 40),
+    rateWindowMs: numeric("RATE_WINDOW_MS", 10_000),
+  };
 }
 
-const clients = new Map<any, ClientMeta>();
-
-setInterval(() => {
-  roomStore.cleanupEmptyRooms();
-}, 60_000);
-
-const server = http.createServer((req, res) => {
-  const allowedOrigins = ALLOWED_ORIGINS || ['*'];
-  const origin = req.headers.origin || '*';
-  const allowOrigin = allowedOrigins.includes('*') || allowedOrigins.includes(origin)
-    ? origin
-    : allowedOrigins[0] || '*';
-
-  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
-  if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      version: '1.0.0',
-    }));
-    return;
-  }
-
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found' }));
-});
-
-const wss = new WebSocketServer({ noServer: true });
-
-server.on('upgrade', (req, socket, head) => {
-  if (req.url !== '/' && req.url !== '/ws') {
-    socket.destroy();
-    return;
-  }
-
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS && ALLOWED_ORIGINS.length > 0 && origin) {
-    if (!ALLOWED_ORIGINS.includes(origin)) {
-      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-      socket.destroy();
+export function createSignalingServer(config = configFromEnv()): RunningServer {
+  const httpServer = createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      response.end(JSON.stringify({ status: "ok" }));
       return;
     }
-  }
-
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    if (clients.size >= MAX_CONNECTIONS) {
-      ws.close(1008, 'Server at capacity');
-      return;
-    }
-
-    const ip = (req.socket.remoteAddress || 'unknown');
-    clients.set(ws, { ip, messages: [], rateLimited: false });
-
-    ws.on('message', (data) => {
-      const raw = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-
-      if (raw.length > MAX_PAYLOAD_SIZE) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Payload too large' }));
-        return;
-      }
-
-      const meta = clients.get(ws);
-      if (meta) {
-        const now = Date.now();
-        meta.messages = meta.messages.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
-        if (meta.messages.length >= MAX_MESSAGES_PER_WINDOW) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Rate limited' }));
-          return;
-        }
-        meta.messages.push(now);
-      }
-
-      let msg: unknown;
-      try {
-        msg = JSON.parse(raw.toString('utf8'));
-      } catch {
-        ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
-        return;
-      }
-
-      handleMessage(ws, msg);
-    });
-
-    ws.on('close', () => {
-      handleDisconnect(ws);
-      clients.delete(ws);
-    });
-
-    ws.on('error', () => {
-      clients.delete(ws);
-    });
+    response.writeHead(404, { "content-type": "application/json" }); response.end(JSON.stringify({ error: "Not found" }));
   });
-});
+  const websocketServer = new WebSocketServer({ noServer: true, maxPayload: config.maxPayloadBytes });
+  const rooms = new RoomStore(2);
+  let connections = 0;
+  httpServer.on("upgrade", (request, socket, head) => {
+    if (!originAllowed(request, config.allowedOrigins)) { rejectUpgrade(socket, 403, "Origin not allowed"); return; }
+    if (connections >= config.maxConnections) { rejectUpgrade(socket, 503, "Server busy"); return; }
+    websocketServer.handleUpgrade(request, socket, head, (websocket) => websocketServer.emit("connection", websocket, request));
+  });
+  websocketServer.on("connection", (socket: WebSocket) => {
+    connections += 1;
+    socket.once("close", () => { connections -= 1; });
+    socket.on("error", () => undefined); // Avoid process errors; never log signaling payloads.
+    attachSignaling(socket, rooms, config);
+  });
+  return {
+    httpServer, config,
+    close: () => new Promise((resolve, reject) => websocketServer.close(() => httpServer.close((error) => error ? reject(error) : resolve()))),
+  };
+}
 
-server.listen(PORT, () => {
-  console.log(`[Signaling] Server running on http://localhost:${PORT}`);
-  console.log(`[Signaling] WebSocket endpoint: ws://localhost:${PORT}/`);
-  console.log(`[Signaling] Health: http://localhost:${PORT}/health`);
-  console.log(`[Signaling] Allowed origins: ${ALLOWED_ORIGINS?.join(', ') || 'all'}`);
-});
+function originAllowed(request: IncomingMessage, allowed: string[]): boolean {
+  // Non-browser clients may omit Origin. Browser Origins must be explicitly allowlisted in production.
+  const origin = request.headers.origin;
+  return !origin || allowed.length === 0 || allowed.includes(origin);
+}
+function rejectUpgrade(socket: import("node:stream").Duplex, status: number, reason: string): void {
+  socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`); socket.destroy();
+}

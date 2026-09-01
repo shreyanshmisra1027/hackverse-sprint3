@@ -1,122 +1,71 @@
-import { WebSocket } from 'ws';
-import { validateMessage } from './validation';
-import { roomStore } from './rooms';
-import { SignalingMessage } from './protocol';
+import { WebSocket, type RawData } from "ws";
+import { errorMessage, type ClientMessage, type ServerMessage } from "./protocol.js";
+import { RoomStore } from "./rooms.js";
+import { parseClientMessage } from "./validation.js";
 
-export function handleMessage(ws: WebSocket, msg: unknown) {
-  const validation = validateMessage(msg);
-  if (!validation.valid) {
-    ws.send(JSON.stringify({ type: 'error', message: validation.error || 'Invalid message' }));
-    return;
-  }
+const OPEN = WebSocket.OPEN;
+interface ConnectionState { roomId?: string; peerId?: string; timestamps: number[] }
 
-  const m = msg as SignalingMessage;
-  const { type, roomId, peerId, targetPeerId, payload } = m;
+export interface SignalingOptions { maxMessagesPerWindow: number; rateWindowMs: number }
 
-  switch (type) {
-    case 'join': {
-      if (!roomId || !peerId) return;
-      roomStore.createRoom(roomId);
-      const added = roomStore.addPeer(roomId, peerId, ws);
-      if (!added) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Room full or invalid' }));
-        return;
-      }
-      const room = roomStore.getRoom(roomId);
-      if (!room) return;
-      const peers = Array.from(room.peers.keys());
-
-      peers.forEach(pid => {
-        if (pid !== peerId) {
-          const targetWs = room.peers.get(pid);
-          if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-            targetWs.send(JSON.stringify({
-              type: 'peer-joined',
-              roomId,
-              peerId,
-              payload: { peerId },
-            }));
-          }
-        }
-      });
-
-      const existing = peers.filter(p => p !== peerId);
-      ws.send(JSON.stringify({
-        type: 'joined',
-        roomId,
-        peerId,
-        payload: { peers: existing },
-      }));
-      break;
-    }
-
-    case 'leave': {
-      if (!roomId || !peerId) return;
-      roomStore.removePeer(roomId, peerId);
-      const room = roomStore.getRoom(roomId);
-      if (room) {
-        const peers = Array.from(room.peers.keys());
-        peers.forEach(pid => {
-          const targetWs = room.peers.get(pid);
-          if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-            targetWs.send(JSON.stringify({
-              type: 'peer-left',
-              roomId,
-              peerId,
-              payload: { peerId },
-            }));
-          }
-        });
-      }
-      break;
-    }
-
-    case 'offer':
-    case 'answer':
-    case 'candidate': {
-      if (!roomId || !peerId || !targetPeerId || payload === undefined) return;
-      const room = roomStore.getRoom(roomId);
-      if (!room) return;
-      const targetWs = room.peers.get(targetPeerId);
-      if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-        targetWs.send(JSON.stringify({
-          type,
-          roomId,
-          peerId,
-          targetPeerId,
-          payload,
-        }));
-      }
-      break;
-    }
-
-    default:
-      break;
-  }
+export function send(socket: WebSocket, message: ServerMessage | ClientMessage): void {
+  if (socket.readyState === OPEN) socket.send(JSON.stringify(message));
 }
 
-export function handleDisconnect(ws: WebSocket) {
-  for (const [roomId, room] of roomStore.getAllRooms().entries()) {
-    for (const [peerId, socket] of room.peers.entries()) {
-      if (socket === ws) {
-        roomStore.removePeer(roomId, peerId);
-        const remaining = roomStore.getRoom(roomId);
-        if (remaining) {
-          const peers = Array.from(remaining.peers.keys());
-          peers.forEach(pid => {
-            const targetWs = remaining.peers.get(pid);
-            if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-              targetWs.send(JSON.stringify({
-                type: 'peer-left',
-                roomId,
-                peerId,
-                payload: { peerId },
-              }));
-            }
-          });
-        }
-        return;
-      }
+export function attachSignaling(socket: WebSocket, rooms: RoomStore, options: SignalingOptions): void {
+  const state: ConnectionState = { timestamps: [] };
+  socket.on("message", (data: RawData, isBinary: boolean) => {
+    if (isBinary) { send(socket, errorMessage("INVALID_MESSAGE", "Binary messages are not supported.")); return; }
+    const now = Date.now();
+    state.timestamps = state.timestamps.filter((time) => now - time < options.rateWindowMs);
+    if (state.timestamps.length >= options.maxMessagesPerWindow) {
+      send(socket, errorMessage("RATE_LIMITED", "Too many messages; connection closed."));
+      socket.close(1008, "Rate limit exceeded");
+      return;
     }
+    state.timestamps.push(now);
+    const raw = data.toString();
+    const message = parseClientMessage(raw);
+    if ("error" in message) { send(socket, errorMessage("INVALID_MESSAGE", message.error)); return; }
+    handleMessage(socket, rooms, state, message);
+  });
+  socket.on("close", () => {
+    if (!state.roomId || !state.peerId) return;
+    const remaining = rooms.remove(state.roomId, state.peerId);
+    for (const peer of remaining) send(peer.socket, { type: "PEER_LEFT", roomId: state.roomId, peerId: state.peerId });
+  });
+}
+
+function handleMessage(socket: WebSocket, rooms: RoomStore, state: ConnectionState, message: ClientMessage): void {
+  if (message.type === "CREATE_ROOM" || message.type === "JOIN_ROOM") {
+    if (state.roomId) { send(socket, errorMessage("ALREADY_JOINED", "A connection can belong to one room.")); return; }
+    if (message.type === "CREATE_ROOM") {
+      const result = rooms.create(message.roomId, { peerId: message.peerId, socket });
+      if (result !== "ok") { send(socket, errorMessage(result, "Room already exists.")); return; }
+      state.roomId = message.roomId; state.peerId = message.peerId;
+      return;
+    }
+    const result = rooms.join(message.roomId, { peerId: message.peerId, socket });
+    if (result.result !== "ok") { send(socket, errorMessage(result.result, roomError(result.result))); return; }
+    state.roomId = message.roomId; state.peerId = message.peerId;
+    // Tell both sides about their counterpart; a two-peer room stays intentionally simple.
+    for (const peer of result.existing) {
+      send(peer.socket, { type: "PEER_JOINED", roomId: message.roomId, peerId: message.peerId });
+      send(socket, { type: "PEER_JOINED", roomId: message.roomId, peerId: peer.peerId });
+    }
+    return;
   }
+  if (!state.roomId || !state.peerId || !rooms.hasPeer(message.roomId, state.peerId, socket)) {
+    send(socket, errorMessage("NOT_IN_ROOM", "Join the specified room before signaling.")); return;
+  }
+  const target = rooms.getPeer(message.roomId, message.targetPeerId);
+  if (!target || target.socket === socket) { send(socket, errorMessage("PEER_NOT_FOUND", "Target peer is not in this room.")); return; }
+  // Validation has narrowed the schema; only a permitted peer receives the payload.
+  send(target.socket, message);
+}
+
+function roomError(code: string): string {
+  if (code === "ROOM_NOT_FOUND") return "Room does not exist.";
+  if (code === "ROOM_FULL") return "Room has reached its two-peer limit.";
+  return "Peer ID is already in use in this room.";
 }

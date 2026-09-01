@@ -1,74 +1,45 @@
-export const VALID_MESSAGE_TYPES = [
-  'join',
-  'leave',
-  'offer',
-  'answer',
-  'candidate',
-  'peer-joined',
-  'peer-left',
-] as const;
+import { type ClientMessage, type IceCandidate, type SessionDescription } from "./protocol.js";
 
-export type MessageType = typeof VALID_MESSAGE_TYPES[number];
+const ROOM_ID = /^[A-Za-z0-9_-]{3,64}$/;
+const PEER_ID = /^[A-Za-z0-9_-]{3,64}$/;
+const MAX_SDP_LENGTH = 65_536;
+const MAX_CANDIDATE_LENGTH = 4_096;
 
-export const MAX_MESSAGE_SIZE = 64 * 1024; // 64 KB
-export const MAX_ROOM_ID_LENGTH = 64;
-export const MAX_PEER_ID_LENGTH = 64;
-export const MAX_PEERS_PER_ROOM = 50;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const isId = (value: unknown, pattern: RegExp): value is string => typeof value === "string" && pattern.test(value);
+const isNullableString = (value: unknown): value is string | null => value === null || typeof value === "string";
+const isNullableNumber = (value: unknown): value is number | null => value === null || (typeof value === "number" && Number.isInteger(value) && value >= 0);
 
-export interface ValidationResult {
-  valid: boolean;
-  error?: string;
+function isDescription(value: unknown, expectedType: "offer" | "answer"): value is SessionDescription {
+  return isRecord(value) && value.type === expectedType && typeof value.sdp === "string" && value.sdp.length > 0 && value.sdp.length <= MAX_SDP_LENGTH;
 }
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
+function isCandidate(value: unknown): value is IceCandidate {
+  return isRecord(value) && typeof value.candidate === "string" && value.candidate.length <= MAX_CANDIDATE_LENGTH &&
+    isNullableString(value.sdpMid) && isNullableNumber(value.sdpMLineIndex) &&
+    (value.usernameFragment === undefined || isNullableString(value.usernameFragment));
 }
 
-export function validateMessage(data: unknown): ValidationResult {
-  if (data === null || typeof data !== 'object') {
-    return { valid: false, error: 'Message must be a JSON object' };
+/** Parses only the supported, bounded protocol shape. */
+export function parseClientMessage(raw: string): ClientMessage | { error: string } {
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return { error: "Message must be valid JSON." }; }
+  if (!isRecord(value) || typeof value.type !== "string") return { error: "Message must include a supported type." };
+
+  if (value.type === "CREATE_ROOM" || value.type === "JOIN_ROOM") {
+    if (!isId(value.roomId, ROOM_ID) || !isId(value.peerId, PEER_ID)) return { error: "roomId and peerId must be 3-64 URL-safe characters." };
+    return { type: value.type, roomId: value.roomId, peerId: value.peerId };
   }
-
-  const msg = data as Record<string, unknown>;
-
-  // Validate type
-  if (!isString(msg.type)) {
-    return { valid: false, error: 'Missing or invalid message type' };
-  }
-
-  if (!(VALID_MESSAGE_TYPES as readonly string[]).includes(msg.type)) {
-    return { valid: false, error: `Invalid message type: ${msg.type}` };
-  }
-
-  // Validate roomId for relevant types
-  const needsRoom = ['join', 'leave', 'offer', 'answer', 'candidate', 'peer-joined', 'peer-left'];
-  if (needsRoom.includes(msg.type)) {
-    if (!isString(msg.roomId)) {
-      return { valid: false, error: 'Missing roomId' };
+  if (value.type === "SDP_OFFER" || value.type === "SDP_ANSWER") {
+    if (!isId(value.roomId, ROOM_ID) || !isId(value.targetPeerId, PEER_ID) || !isDescription(value.sdp, value.type === "SDP_OFFER" ? "offer" : "answer")) {
+      return { error: "Invalid SDP signaling message." };
     }
-    if (msg.roomId.length > MAX_ROOM_ID_LENGTH) {
-      return { valid: false, error: `roomId exceeds max length (${MAX_ROOM_ID_LENGTH})` };
-    }
+    return { type: value.type, roomId: value.roomId, targetPeerId: value.targetPeerId, sdp: value.sdp };
   }
-
-  // Validate peerId for relevant types
-  const needsPeer = ['join', 'leave', 'offer', 'answer', 'candidate', 'peer-joined', 'peer-left'];
-  if (needsPeer.includes(msg.type)) {
-    if (!isString(msg.peerId)) {
-      return { valid: false, error: 'Missing peerId' };
-    }
-    if (msg.peerId.length > MAX_PEER_ID_LENGTH) {
-      return { valid: false, error: `peerId exceeds max length (${MAX_PEER_ID_LENGTH})` };
-    }
+  if (value.type === "ICE_CANDIDATE") {
+    if (!isId(value.roomId, ROOM_ID) || !isId(value.targetPeerId, PEER_ID) || !isCandidate(value.candidate)) return { error: "Invalid ICE candidate message." };
+    return { type: value.type, roomId: value.roomId, targetPeerId: value.targetPeerId, candidate: value.candidate };
   }
-
-  // Validate payload for offer/answer/candidate
-  if (msg.type === 'offer' || msg.type === 'answer' || msg.type === 'candidate') {
-    if (msg.payload === undefined) {
-      return { valid: false, error: 'Missing payload for signaling message' };
-    }
-  }
-
-  // Size check (approximate by JSON string length if needed externally)
-  return { valid: true };
+  return { error: "Unsupported message type." };
 }

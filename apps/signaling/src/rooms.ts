@@ -1,71 +1,42 @@
-import { RoomInfo } from './protocol';
-import { WebSocket } from 'ws';
+import type WebSocket from "ws";
 
+export interface Peer { peerId: string; socket: WebSocket }
+export interface Room { id: string; peers: Map<string, Peer> }
+
+/** In-memory only: all state disappears when the process restarts. */
 export class RoomStore {
-  private rooms = new Map<string, RoomInfo>();
-  private readonly maxPeers = 50;
+  private readonly rooms = new Map<string, Room>();
+  constructor(private readonly maxRoomSize = 2) {}
 
-  createRoom(roomId: string): RoomInfo {
-    if (this.rooms.has(roomId)) {
-      return this.rooms.get(roomId)!;
-    }
-    const room: RoomInfo = {
-      roomId,
-      peers: new Map(),
-      createdAt: Date.now(),
-    };
-    this.rooms.set(roomId, room);
-    return room;
+  create(roomId: string, peer: Peer): "ok" | "ROOM_EXISTS" {
+    if (this.rooms.has(roomId)) return "ROOM_EXISTS";
+    this.rooms.set(roomId, { id: roomId, peers: new Map([[peer.peerId, peer]]) });
+    return "ok";
   }
 
-  getRoom(roomId: string): RoomInfo | undefined {
-    return this.rooms.get(roomId);
+  join(roomId: string, peer: Peer): { result: "ok"; existing: Peer[] } | { result: "ROOM_NOT_FOUND" | "ROOM_FULL" | "PEER_EXISTS" } {
+    const room = this.rooms.get(roomId);
+    if (!room) return { result: "ROOM_NOT_FOUND" };
+    if (room.peers.has(peer.peerId)) return { result: "PEER_EXISTS" };
+    if (room.peers.size >= this.maxRoomSize) return { result: "ROOM_FULL" };
+    const existing = [...room.peers.values()];
+    room.peers.set(peer.peerId, peer);
+    return { result: "ok", existing };
   }
 
-  deleteRoom(roomId: string): boolean {
-    return this.rooms.delete(roomId);
+  getPeer(roomId: string, peerId: string): Peer | undefined { return this.rooms.get(roomId)?.peers.get(peerId); }
+  peers(roomId: string): Peer[] { return [...(this.rooms.get(roomId)?.peers.values() ?? [])]; }
+
+  remove(roomId: string, peerId: string): Peer[] {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.peers.delete(peerId)) return [];
+    const remaining = [...room.peers.values()];
+    if (remaining.length === 0) this.rooms.delete(roomId);
+    return remaining;
   }
 
-  addPeer(roomId: string, peerId: string, ws: WebSocket): boolean {
-    const room = this.getRoom(roomId);
-    if (!room) return false;
-    if (room.peers.size >= this.maxPeers) return false;
-    room.peers.set(peerId, ws);
-    return true;
+  hasPeer(roomId: string, peerId: string, socket: WebSocket): boolean {
+    return this.getPeer(roomId, peerId)?.socket === socket;
   }
-
-  removePeer(roomId: string, peerId: string): boolean {
-    const room = this.getRoom(roomId);
-    if (!room) return false;
-    const removed = room.peers.delete(peerId);
-    if (room.peers.size === 0) {
-      this.deleteRoom(roomId);
-    }
-    return removed;
-  }
-
-  getPeers(roomId: string): string[] {
-    const room = this.getRoom(roomId);
-    if (!room) return [];
-    return Array.from(room.peers.keys());
-  }
-
-  getPeerCount(roomId: string): number {
-    const room = this.getRoom(roomId);
-    return room ? room.peers.size : 0;
-  }
-
-  getAllRooms(): Map<string, RoomInfo> {
-    return this.rooms;
-  }
-
-  cleanupEmptyRooms(): void {
-    for (const [roomId, room] of this.rooms.entries()) {
-      if (room.peers.size === 0) {
-        this.rooms.delete(roomId);
-      }
-    }
-  }
+  size(): number { return this.rooms.size; }
 }
-
-export const roomStore = new RoomStore();
