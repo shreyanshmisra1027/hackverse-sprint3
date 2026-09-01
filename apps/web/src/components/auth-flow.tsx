@@ -16,9 +16,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from '../routes/router'
 import {
   createMockUser,
-  DEMO_OTP,
   getMockUser,
-  markMockUserVerified,
   signInMock,
   VIT_DOMAIN,
 } from '../lib/mock-auth'
@@ -111,14 +109,14 @@ export function LoginForm() {
     e.preventDefault()
     setLoading(true)
     setMessage('')
-    window.setTimeout(() => {
-      const ok = signInMock(`${prefix}${VIT_DOMAIN}`, password, remember)
-      if (ok) {
+    window.setTimeout(async () => {
+      try {
+        await signInMock(`${prefix}${VIT_DOMAIN}`, password, remember)
         setMessage('Connecting you to your network...')
         window.setTimeout(() => navigate({ to: '/dashboard' }), 900)
-      } else {
+      } catch (error) {
         setLoading(false)
-        setMessage(getMockUser() ? 'That email or password does not match.' : 'No account found. Create your identity first.')
+        setMessage(error instanceof Error ? error.message : 'Unable to sign in.')
       }
     }, 700)
   }
@@ -227,13 +225,11 @@ export function SignupForm() {
 
   const strength = [password.length >= 8, /[A-Z]/.test(password), /\d/.test(password), /[^A-Za-z0-9]/.test(password)]
 
-  const nextIdentity = (e: React.FormEvent) => {
+  const nextIdentity = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!prefix || !username || !strength.every(Boolean)) return setError('Complete all password requirements.')
     if (password !== confirm) return setError('Passwords do not match.')
-    createMockUser(prefix, username, password)
-    setError('')
-    setStep(3)
+    try { await createMockUser(prefix, username, password); navigate({ to: '/login' }) } catch (error) { setError(error instanceof Error ? error.message : 'Unable to create account.') }
   }
 
   const updateOtp = (i: number, value: string) => {
@@ -358,15 +354,12 @@ export function SignupForm() {
             <form
               onSubmit={(e) => {
                 e.preventDefault()
-                if (otp.join('') !== DEMO_OTP) return setError('Use the demo code 123456.')
-                markMockUserVerified()
                 navigate({ to: '/login' })
               }}
               className={step === 3 ? 'space-y-5' : 'hidden'}
             >
               <p className="text-sm leading-6 text-muted-foreground">
-                We sent a six-digit code to <span className="text-foreground">{prefix}{VIT_DOMAIN}</span>. For this demo, use{' '}
-                <span className="font-mono text-cyan-300">123456</span>.
+                We sent a six-digit code to <span className="text-foreground">{prefix}{VIT_DOMAIN}</span>.
               </p>
               <div className="flex gap-2">
                 {otp.map((digit, i) => (

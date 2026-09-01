@@ -7,6 +7,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import { RoomStore } from "./rooms.js";
 import { attachSignaling } from "./websocket.js";
+import { AuthError, AuthStore } from "./auth.js";
 
 export interface ServerConfig {
   port: number;
@@ -67,6 +68,7 @@ export function createSignalingServer(
   config = configFromEnv()
 ): RunningServer {
   const rooms = new RoomStore(2);
+  const auth = new AuthStore();
 
   /*
    * HTTP SERVER
@@ -74,7 +76,11 @@ export function createSignalingServer(
    * Render connects to this server.
    */
   const httpServer = createServer(
-    (request, response) => {
+    async (request, response) => {
+      if (request.url?.startsWith("/api/auth/")) {
+        await handleAuthRequest(request, response, auth, config.allowedOrigins);
+        return;
+      }
       // Health check
       if (
         request.method === "GET" &&
@@ -370,6 +376,29 @@ export function createSignalingServer(
     config,
   };
 }
+
+async function handleAuthRequest(request: IncomingMessage, response: import("node:http").ServerResponse, auth: AuthStore, allowedOrigins: string[]): Promise<void> {
+  const origin = request.headers.origin;
+  if (origin && allowedOrigins.length && !allowedOrigins.includes(origin)) { response.writeHead(403); response.end(); return; }
+  if (origin) response.setHeader("access-control-allow-origin", origin);
+  response.setHeader("access-control-allow-headers", "content-type, authorization");
+  response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+  if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
+  try {
+    const body = request.method === "POST" ? await jsonBody(request) : {};
+    let result: unknown;
+    if (request.method === "POST" && request.url === "/api/auth/signup") result = await auth.requestSignup(String(body.email ?? ""), String(body.username ?? ""), String(body.password ?? ""));
+    else if (request.method === "POST" && request.url === "/api/auth/login") result = await auth.login(String(body.email ?? ""), String(body.password ?? ""));
+    else if (request.method === "GET" && request.url === "/api/auth/me") result = { user: await auth.accountForToken(request.headers.authorization?.replace(/^Bearer\s+/i, "")) };
+    else { response.writeHead(404); response.end(JSON.stringify({ error: "Not found" })); return; }
+    response.writeHead(200, { "content-type": "application/json" }); response.end(JSON.stringify(result ?? { ok: true }));
+  } catch (error) {
+    const status = error instanceof AuthError ? error.status : 500;
+    response.writeHead(status, { "content-type": "application/json" }); response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Request failed" }));
+  }
+}
+
+function jsonBody(request: IncomingMessage): Promise<Record<string, unknown>> { return new Promise((resolve, reject) => { let raw = ""; request.on("data", (chunk: Buffer) => { raw += chunk; if (raw.length > 20_000) reject(new AuthError("Request too large", 413)); }); request.on("end", () => { try { resolve(JSON.parse(raw) as Record<string, unknown>); } catch { reject(new AuthError("Invalid JSON")); } }); request.on("error", reject); }); }
 
 /*
  * ORIGIN VALIDATION
