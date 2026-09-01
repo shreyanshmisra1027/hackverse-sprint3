@@ -20,6 +20,25 @@ apps/signaling/  WebSocket service used for WebRTC negotiation
 e2e-messaging/   Encryption and end-to-end messaging utilities
 render.yaml      Render Blueprint for the signaling service
 ```
+## Tech stack
+
+**Frontend**
+- React + Vite
+- WebRTC (RTCPeerConnection + DataChannel) for direct peer-to-peer messaging
+
+**Backend / APIs**
+- Vercel serverless functions (same-origin `/api` routes)
+- Node.js WebSocket service (`apps/signaling`) for WebRTC offer/answer/ICE relay
+
+**Data & storage**
+- Neon Postgres (pooled connection)
+- AES-256-GCM for encrypting the message archive at rest
+- bcrypt for password and session-token hashing
+
+**Infrastructure**
+- Vercel — frontend + API hosting
+- Render — signaling service (via `render.yaml` Blueprint)
+- STUN/TURN for NAT traversal (TURN optional, recommended for production)
 
 ## Run locally
 
@@ -76,3 +95,8 @@ For production reliability, configure TURN credentials as well; STUN-only WebRTC
 ## Credits
 
 with <3 from the Newbies team
+By:
+Shreyansh Misra
+Sanchit Kalra
+Ashwin Joseph
+Vansh
