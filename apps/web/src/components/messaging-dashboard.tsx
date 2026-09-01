@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '../routes/router'
-import { getMockUser, isSignedIn, signOutMock } from '../lib/mock-auth'
+import { archiveMessage, getMockUser, isSignedIn, signOutMock } from '../lib/mock-auth'
 import { type ConnectionState, P2PChat } from '../lib/p2p-chat'
 
 type Person = {
@@ -114,6 +114,7 @@ export function MessagingDashboard() {
     if (!text || !selected) return
     if (chat.current && connectionState !== 'connected') return
     try { chat.current?.send(text) } catch { return }
+    if (roomCode) void archiveMessage(roomCode, selected.username, text).catch(() => undefined)
     setMessages((current) => ({
       ...current,
       [selected.username]: [
@@ -139,10 +140,13 @@ export function MessagingDashboard() {
     chat.current = new P2PChat(code, peerId, {
       onState: (state) => setConnectionState(state),
       onPeer: () => undefined,
-      onMessage: (text) => setMessages((current) => ({
-        ...current,
-        [person.username]: [...(current[person.username] || []), { id: Date.now(), text, outgoing: false, time: 'Now' }],
-      })),
+      onMessage: (text) => {
+        void archiveMessage(code, person.username, text).catch(() => undefined)
+        setMessages((current) => ({
+          ...current,
+          [person.username]: [...(current[person.username] || []), { id: Date.now(), text, outgoing: false, time: 'Now' }],
+        }))
+      },
     })
     if (join) chat.current.join()
     else chat.current.create()
@@ -224,7 +228,7 @@ export function MessagingDashboard() {
             <Avatar person={me} small />
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-medium">{user?.username || 'Your identity'}</p>
-              <p className="text-[11px] text-cyan-300">Verified student</p>
+              <p className="text-[11px] text-cyan-300">Student account</p>
             </div>
             <button
               onClick={() => {

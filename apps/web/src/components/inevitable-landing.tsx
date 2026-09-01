@@ -220,7 +220,7 @@ export function InevitableLanding() {
             </p>
           </div>
           <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
-            {['Verify your VIT identity', 'Create your student identity', 'Discover people nearby', 'Connect and start talking'].map((item, i) => (
+            {['Create your VIT identity', 'Choose your student username', 'Discover people nearby', 'Connect and start talking'].map((item, i) => (
               <div key={item} className="flex items-center gap-5 py-6">
                 <span className="font-mono text-xs text-cyan-400">0{i + 1}</span>
                 <span className="text-lg font-medium">{item}</span>
