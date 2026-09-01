@@ -96,7 +96,7 @@ For production reliability, configure TURN credentials as well; STUN-only WebRTC
 
 with <3 from the Newbies team
 By:
-Shreyansh Misra
-Sanchit Kalra
-Ashwin Joseph
-Vansh
+- Shreyansh Misra
+- Sanchit Kalra
+- Ashwin Joseph
+- Vansh
