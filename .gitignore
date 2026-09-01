@@ -1,7 +1,12 @@
 node_modules/
 dist/
+build/
 .env
 .env.local
+.env.production
+.env*.local
 *.log
 .DS_Store
-.neon
+.neon/
+*.tsbuildinfo
+.vercel/
