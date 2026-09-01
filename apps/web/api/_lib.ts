@@ -8,15 +8,22 @@ export type PublicUser = { id: string; email: string; username: string };
 let pool: Pool | undefined;
 let initialized: Promise<void> | undefined;
 
+export class ServiceConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ServiceConfigurationError";
+  }
+}
+
 function database(): Pool {
-  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not configured.");
+  if (!process.env.DATABASE_URL) throw new ServiceConfigurationError("DATABASE_URL is not configured.");
   pool ??= new Pool({ connectionString: process.env.DATABASE_URL, max: 5, ssl: { rejectUnauthorized: false } });
   return pool;
 }
 
 export async function initialize(): Promise<void> {
   if (!initialized) {
-    initialized = database().query(`
+    const setup = database().query(`
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
@@ -43,6 +50,12 @@ export async function initialize(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS message_archive_sender_created_idx ON message_archive(sender_id, created_at DESC);
     `).then(() => undefined);
+    // Do not cache a rejected startup attempt: a transient database/network
+    // failure should not make every later request fail in this function instance.
+    initialized = setup.catch((error) => {
+      initialized = undefined;
+      throw error;
+    });
   }
   return initialized;
 }

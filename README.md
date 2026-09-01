@@ -73,8 +73,12 @@ verification flow.
 
 Import the repository into Vercel and set the **Root Directory** to `apps/web`.
 Vercel installs dependencies, builds the Vite client, and deploys the `api/`
-functions automatically. Do not set `VITE_API_URL` in Vercel: it would make the
-browser bypass the same-origin functions.
+functions automatically. Do not set `VITE_API_URL` in Vercel: production
+authentication always calls same-origin `/api` routes, never Render.
+
+`DATABASE_URL` in a local root `.env.local` is not deployed automatically.
+Add it in **Vercel → Project → Settings → Environment Variables** for every
+environment you deploy (Production, Preview, and Development), then redeploy.
 
 ### 2. Render signaling
 

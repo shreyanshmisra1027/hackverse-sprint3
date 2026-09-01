@@ -5,7 +5,11 @@ export type AuthUser = {
 
 const USER_KEY = 'inevitable-user'
 const SESSION_KEY = 'inevitable-session'
-const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+// Production requests must stay on Vercel so `/api` reaches the serverless
+// functions. A separate host is supported only for local development.
+const API_URL = import.meta.env.DEV
+  ? (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+  : ''
 
 async function api(path: string, body?: unknown) {
   const response = await fetch(`${API_URL}${path}`, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json', ...(localStorage.getItem(SESSION_KEY) ? { authorization: `Bearer ${localStorage.getItem(SESSION_KEY)}` } : {}) }, body: body ? JSON.stringify(body) : undefined })

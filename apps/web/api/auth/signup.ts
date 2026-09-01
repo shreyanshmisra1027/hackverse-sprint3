@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { bcrypt, database, initialize, issueSession, json, methodNotAllowed, randomUUID } from "../_lib";
+import { bcrypt, database, initialize, issueSession, json, methodNotAllowed, randomUUID, ServiceConfigurationError } from "../_lib";
 
 const EMAIL = /^[A-Za-z0-9._%+-]+@vitstudent\.ac\.in$/i;
 const USERNAME = /^[A-Za-z0-9_-]{3,32}$/;
@@ -22,6 +22,10 @@ export default async function handler(request: VercelRequest, response: VercelRe
     return json(response, 201, await issueSession(created.rows[0]));
   } catch (error: unknown) {
     if ((error as { code?: string }).code === "23505") return json(response, 409, { error: "An account with that email or username already exists." });
+    if (error instanceof ServiceConfigurationError) {
+      console.error("signup service configuration failed", error);
+      return json(response, 503, { error: "Authentication is temporarily unavailable. The server needs its DATABASE_URL configured." });
+    }
     console.error("signup failed", error);
     return json(response, 500, { error: "Unable to create account." });
   }
