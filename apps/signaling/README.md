@@ -69,8 +69,8 @@ Free tiers change and commonly sleep inactive services, impose connection/runtim
 
 ### Render setup for this repository
 
-The root-level `render.yaml` is a Render Blueprint. It defines this service with
-`apps/signaling` as its service root, so the Dockerfile and build context resolve
+The root-level `render.yaml` is a Render Blueprint. It explicitly sets the
+Dockerfile and Docker build context to `apps/signaling`, so they resolve
 correctly in the monorepo. After the repository is pushed to GitHub, GitLab, or Bitbucket:
 
 1. In Render, choose **New → Blueprint** and select the repository. Leave the Blueprint Path as the default, `render.yaml`.
