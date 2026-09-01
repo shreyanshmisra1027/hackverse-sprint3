@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { currentUser, database, decryptMessage, encryptMessage, initialize, json, methodNotAllowed, randomUUID } from "./_lib";
+import { currentUser, database, decryptMessage, encryptMessage, initialize, json, methodNotAllowed, randomUUID } from "./_lib.js";
 
 const ROOM = /^[A-Za-z0-9_-]{3,64}$/;
 const USERNAME = /^@[A-Za-z0-9_-]{1,32}$/;

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { bcrypt, database, initialize, issueSession, json, methodNotAllowed } from "../_lib";
+import { bcrypt, database, initialize, issueSession, json, methodNotAllowed } from "../_lib.js";
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   if (request.method !== "POST") return methodNotAllowed(response, "POST");

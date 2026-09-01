@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { bcrypt, database, initialize, issueSession, json, methodNotAllowed, randomUUID, ServiceConfigurationError } from "../_lib";
+import { bcrypt, database, initialize, issueSession, json, methodNotAllowed, randomUUID, ServiceConfigurationError } from "../_lib.js";
 
 const EMAIL = /^[A-Za-z0-9._%+-]+@vitstudent\.ac\.in$/i;
 const USERNAME = /^[A-Za-z0-9_-]{3,32}$/;
