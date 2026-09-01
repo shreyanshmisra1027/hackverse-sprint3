@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '../routes/router'
-import { archiveMessage, getMockUser, isSignedIn, listUsers, signOutMock } from '../lib/mock-auth'
+import { archiveMessage, getMockUser, isSignedIn, listUsers, loadArchivedMessages, signOutMock, updatePresence } from '../lib/mock-auth'
 import { type ConnectionState, P2PChat } from '../lib/p2p-chat'
 
 type Person = {
@@ -33,9 +33,9 @@ type Person = {
 }
 type Message = { id: number; text: string; outgoing: boolean; time: string }
 
-function personFromUsername(username: string, index: number): Person {
+function personFromUsername(username: string, index: number, online = false): Person {
   const tones = ['from-cyan-500/30 to-blue-600/30', 'from-fuchsia-500/30 to-purple-600/30', 'from-amber-400/30 to-orange-600/30', 'from-emerald-400/30 to-teal-600/30']
-  return { name: username, username: `@${username}`, initials: username.slice(0, 2).toUpperCase(), tone: tones[index % tones.length], online: false, preview: '', time: '' }
+  return { name: username, username: `@${username}`, initials: username.slice(0, 2).toUpperCase(), tone: tones[index % tones.length], online, preview: '', time: '' }
 }
 
 function Avatar({ person, small = false }: { person: Person; small?: boolean }) {
@@ -83,12 +83,29 @@ export function MessagingDashboard() {
   useEffect(() => {
     if (!isSignedIn()) return
     let active = true
-    void listUsers().then((users) => {
-      if (active) setPeople(users.map((account, index) => personFromUsername(account.username, index)))
-    }).catch(() => {
-      if (active) setPeople([])
-    })
-    return () => { active = false }
+    const refresh = () => {
+      void updatePresence().catch(() => undefined)
+      void listUsers().then((users) => {
+        if (active) setPeople(users.map((account, index) => personFromUsername(account.username, index, account.online)))
+      }).catch(() => {
+        if (active) setPeople([])
+      })
+    }
+    refresh()
+    void loadArchivedMessages().then((archived) => {
+      if (!active) return
+      setMessages(archived.reduce<Record<string, Message[]>>((all, message) => {
+        const key = message.recipientUsername
+        const time = new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        all[key] = [...(all[key] || []), { id: Number.parseInt(message.id.replace(/-/g, '').slice(0, 12), 16), text: message.text, outgoing: message.outgoing, time }]
+        return all
+      }, {}))
+    }).catch(() => undefined)
+    const interval = window.setInterval(refresh, 20_000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
   }, [])
 
   const filtered = useMemo(
@@ -132,7 +149,7 @@ export function MessagingDashboard() {
       onState: (state) => setConnectionState(state),
       onPeer: () => undefined,
       onMessage: (text) => {
-        void archiveMessage(code, person.username, text).catch(() => undefined)
+        void archiveMessage(code, person.username, text, false).catch(() => undefined)
         setMessages((current) => ({
           ...current,
           [person.username]: [...(current[person.username] || []), { id: Date.now(), text, outgoing: false, time: 'Now' }],

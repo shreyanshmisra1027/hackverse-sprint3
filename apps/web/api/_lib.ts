@@ -29,8 +29,10 @@ export async function initialize(): Promise<void> {
         email TEXT UNIQUE NOT NULL,
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_seen_at TIMESTAMPTZ
       );
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
       CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -46,8 +48,10 @@ export async function initialize(): Promise<void> {
         ciphertext TEXT NOT NULL,
         iv TEXT NOT NULL,
         auth_tag TEXT NOT NULL,
+        outgoing BOOLEAN NOT NULL DEFAULT true,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+      ALTER TABLE message_archive ADD COLUMN IF NOT EXISTS outgoing BOOLEAN NOT NULL DEFAULT true;
       CREATE INDEX IF NOT EXISTS message_archive_sender_created_idx ON message_archive(sender_id, created_at DESC);
     `).then(() => undefined);
     // Do not cache a rejected startup attempt: a transient database/network

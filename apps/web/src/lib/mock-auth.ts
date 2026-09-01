@@ -3,7 +3,8 @@ export type AuthUser = {
   username: string
 }
 
-export type DirectoryUser = { username: string }
+export type DirectoryUser = { username: string; online: boolean }
+export type ArchivedMessage = { id: string; recipientUsername: string; roomId: string; text: string; outgoing: boolean; createdAt: string }
 
 const USER_KEY = 'inevitable-user'
 const SESSION_KEY = 'inevitable-session'
@@ -59,8 +60,15 @@ export async function listUsers(): Promise<DirectoryUser[]> {
   return Array.isArray(result.users) ? result.users : []
 }
 
-export async function archiveMessage(roomId: string, recipientUsername: string, text: string) {
-  await api('/api/messages', { roomId, recipientUsername, text })
+export async function archiveMessage(roomId: string, recipientUsername: string, text: string, outgoing = true) {
+  await api('/api/messages', { roomId, recipientUsername, text, outgoing })
 }
+
+export async function loadArchivedMessages(): Promise<ArchivedMessage[]> {
+  const result = await api('/api/messages')
+  return Array.isArray(result.messages) ? result.messages : []
+}
+
+export async function updatePresence() { await api('/api/presence', {}) }
 
 export const VIT_DOMAIN = '@vitstudent.ac.in'

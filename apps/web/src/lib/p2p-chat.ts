@@ -20,6 +20,13 @@ function signalingUrl() {
   return `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:10000`
 }
 
+function iceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+  const turnUrl = import.meta.env.VITE_TURN_URL
+  if (turnUrl) servers.push({ urls: turnUrl, username: import.meta.env.VITE_TURN_USERNAME, credential: import.meta.env.VITE_TURN_CREDENTIAL })
+  return servers
+}
+
 function send(socket: WebSocket, message: object) {
   if (socket.readyState !== WebSocket.OPEN) throw new Error('The signaling connection is not open.')
   socket.send(JSON.stringify(message))
@@ -96,7 +103,7 @@ export class P2PChat {
 
   private ensurePeer() {
     if (this.peer) return this.peer
-    const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+    const peer = new RTCPeerConnection({ iceServers: iceServers() })
     peer.addEventListener('icecandidate', (event) => {
       if (event.candidate && this.remotePeerId) send(this.socket!, { type: 'ICE_CANDIDATE', roomId: this.roomId, targetPeerId: this.remotePeerId, candidate: event.candidate.toJSON() })
     })

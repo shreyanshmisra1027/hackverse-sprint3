@@ -98,3 +98,8 @@ Set `ALLOWED_ORIGINS` to the exact Vercel production URL (and any custom domain)
 for example `https://inevitable.vercel.app`. After its first deploy, copy the
 Render service URL into Vercel as `VITE_SIGNALING_URL`, redeploy Vercel, then
 update Render's allowlist if the final Vercel domain differs.
+
+For reliable WebRTC connections across campus and mobile networks, add a TURN
+provider and set `VITE_TURN_URL`, `VITE_TURN_USERNAME`, and
+`VITE_TURN_CREDENTIAL` in Vercel before redeploying. STUN-only WebRTC cannot
+connect peers behind some NAT/firewall combinations.
